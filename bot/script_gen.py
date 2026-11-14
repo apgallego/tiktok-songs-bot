@@ -5,7 +5,11 @@ import time
 
 import requests
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODELS = [
+    os.getenv("GEMINI_MODEL", "gemini-flash-latest"),
+    "gemini-2.5-flash-lite",  # respaldo si el principal está saturado o no existe
+]
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")  # tercer nivel, opcional
 
 PROMPT = """Eres guionista de vídeos cortos (TikTok, Reels, Shorts) sobre música.
 Escribe un guion en español sobre la canción "{song}" de {artist}.
@@ -35,30 +39,64 @@ Devuelve SOLO un JSON con esta forma:
 """
 
 
-def generate_script(song: str, artist: str) -> dict:
-    api_key = os.environ["GEMINI_API_KEY"]
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent"
-    )
+class _Skip(Exception):
+    """El proveedor no puede servir este modelo: pasar al siguiente sin reintentar."""
+
+
+def _gemini(model: str, prompt: str) -> str:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     body = {
-        "contents": [{"parts": [{"text": PROMPT.format(song=song, artist=artist)}]}],
+        "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8},
     }
+    r = requests.post(
+        url, params={"key": os.environ["GEMINI_API_KEY"]}, json=body, timeout=180
+    )
+    if r.status_code in (400, 401, 403, 404):
+        raise _Skip(f"Gemini {model}: HTTP {r.status_code}")
+    r.raise_for_status()  # 429 y 5xx se reintentan
+    return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+
+
+def _groq(model: str, prompt: str) -> str:
+    r = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"},
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.8,
+            "response_format": {"type": "json_object"},
+        },
+        timeout=180,
+    )
+    if r.status_code in (400, 401, 403, 404):
+        raise _Skip(f"Groq {model}: HTTP {r.status_code}")
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+def generate_script(song: str, artist: str) -> dict:
+    prompt = PROMPT.format(song=song, artist=artist)
+    chain = [(_gemini, m) for m in GEMINI_MODELS]
+    if os.getenv("GROQ_API_KEY"):
+        chain.append((_groq, GROQ_MODEL))
+
     last_err = None
-    for attempt in range(4):
-        try:
-            r = requests.post(url, params={"key": api_key}, json=body, timeout=180)
-            if r.status_code in (429, 500, 503):
-                raise RuntimeError(f"Gemini {r.status_code}: {r.text[:200]}")
-            r.raise_for_status()
-            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            data = json.loads(text)
-            _validate(data)
-            return data
-        except Exception as e:  # reintenta ante límites o JSON roto
-            last_err = e
-            time.sleep(15 * (attempt + 1))
+    for fn, model in chain:
+        for attempt in range(3):
+            try:
+                data = json.loads(fn(model, prompt))
+                _validate(data)
+                return data
+            except _Skip as e:
+                last_err = e
+                print(f"  {e}; paso al siguiente proveedor", flush=True)
+                break
+            except Exception as e:  # timeouts, 429/5xx, JSON roto: reintenta
+                last_err = e
+                print(f"  intento {attempt + 1} con {model} falló: {e}", flush=True)
+                time.sleep(10 * (attempt + 1))
     raise RuntimeError(f"No se pudo generar el guion: {last_err}")
 
 
