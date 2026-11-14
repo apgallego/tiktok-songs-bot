@@ -13,7 +13,7 @@ publica en TikTok, Instagram Reels y YouTube Shorts.
 
 ## Decisiones tomadas
 - Ejecución: GitHub Actions (cron diario, repositorio público) con Python, no n8n.
-- Guion: API gratuita de Gemini (`GEMINI_MODEL`, por defecto gemini-2.5-flash), salida JSON.
+- Guion: API gratuita de Gemini (`GEMINI_MODEL`, por defecto gemini-flash-latest; respaldo gemini-2.5-flash-lite) y, si Gemini falla, Groq (`GROQ_API_KEY` opcional, `GROQ_MODEL` por defecto llama-3.3-70b-versatile). Salida JSON.
 - Voz: edge-tts (por defecto es-ES-AlvaroNeural) con tiempos por palabra para los subtítulos.
 - Imágenes: Pollinations.ai; si falla, fondo degradado con Pillow.
 - Montaje: FFmpeg (zoompan + xfade + subtítulos ASS palabra a palabra + título + música de `music/`).
