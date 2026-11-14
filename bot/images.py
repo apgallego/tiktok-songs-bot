@@ -37,6 +37,28 @@ def cover(img: Image.Image) -> Image.Image:
     return img.crop((left, top, left + W, top + H))
 
 
+def cover_card(cover_path: str, out_path: str) -> str:
+    """Portada del álbum centrada sobre su propia versión difuminada (1080x1920)."""
+    src = Image.open(cover_path).convert("RGB")
+    bg = cover(src).filter(ImageFilter.GaussianBlur(40))
+    side = 880
+    art = src.copy()
+    scale = side / min(art.width, art.height)
+    art = art.resize((round(art.width * scale), round(art.height * scale)), Image.LANCZOS)
+    left, top = (art.width - side) // 2, (art.height - side) // 2
+    art = art.crop((left, top, left + side, top + side))
+    # sombra suave bajo la portada
+    shadow = Image.new("RGBA", (side + 60, side + 60), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rectangle([30, 30, side + 30, side + 30], fill=(0, 0, 0, 170))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(18))
+    canvas = bg.convert("RGBA")
+    px, py = (W - side) // 2, (H - side) // 2 - 120
+    canvas.alpha_composite(shadow, (px - 30, py - 30))
+    canvas.paste(art, (px, py))
+    canvas.convert("RGB").save(out_path, quality=92)
+    return out_path
+
+
 def gradient(seed_text: str, out_path: str) -> None:
     rnd = random.Random(hashlib.md5(seed_text.encode()).hexdigest())
     c1 = [rnd.randint(20, 120) for _ in range(3)]

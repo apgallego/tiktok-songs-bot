@@ -10,6 +10,8 @@ import traceback
 sys.path.insert(0, os.path.dirname(__file__))
 
 import images  # noqa: E402
+import music as music_lib  # noqa: E402
+import resources  # noqa: E402
 import script_gen  # noqa: E402
 import tts  # noqa: E402
 import upload_instagram  # noqa: E402
@@ -58,8 +60,17 @@ def main() -> int:
     print(f"▶ Canción de hoy: {song} — {artist}")
     os.makedirs(OUT, exist_ok=True)
 
+    print("0/4 Buscando recursos (portada y datos de Wikipedia)…")
+    cover_src = resources.fetch_cover(song, artist, os.path.join(OUT, "cover_src.jpg"))
+    try:
+        context = resources.wiki_context(song, artist)
+    except Exception as e:
+        print(f"  Wikipedia falló: {e}")
+        context = ""
+    print(f"    Portada: {'sí' if cover_src else 'no'} · Datos Wikipedia: {'sí' if context else 'no'}")
+
     print("1/4 Generando guion con Gemini…")
-    s = script_gen.generate_script(song, artist)
+    s = script_gen.generate_script(song, artist, context)
     print("   ", s["narracion"])
 
     print("2/4 Generando voz…")
@@ -70,14 +81,25 @@ def main() -> int:
     print("3/4 Generando imágenes…")
     seed = random.randint(1, 10**6)
     imgs = []
-    for i, prompt in enumerate(s["imagenes"][:5]):
+    if cover_src:
+        imgs.append(images.cover_card(cover_src, os.path.join(OUT, "img_cover.jpg")))
+    for i, prompt in enumerate(s["imagenes"][: 5 - len(imgs)]):
         p = os.path.join(OUT, f"img{i}.jpg")
         images.fetch_image(prompt, p, seed + i)
         imgs.append(p)
 
     print("4/4 Montando vídeo…")
+    # prioridad: tus mp3 en music/ (si los hay); si no, una pista libre de Wikimedia Commons
     tracks = glob.glob(os.path.join(ROOT, "music", "*.mp3"))
-    music = random.choice(tracks) if tracks else None
+    music, credit = None, ""
+    if tracks:
+        music = random.choice(tracks)
+    else:
+        bg = music_lib.fetch_background(OUT)
+        if bg:
+            music = bg["path"]
+            credit = f"Música: {bg['title']} de {bg['artist']} ({bg['license']}), Wikimedia Commons"
+            print(f"    {credit}")
     out_video = os.path.join(OUT, "video.mp4")
     video.render(imgs, voice, words, dur, s["titulo"], out_video, OUT, music)
     print(f"    Vídeo listo: {out_video}")
@@ -85,9 +107,12 @@ def main() -> int:
     tags = s["hashtags"][:8]
     caption = f"{s['descripcion']}\n\n{' '.join(tags)}"
     title = f"{song} - {artist}: {s['titulo']}" if s["titulo"] not in song else f"{song} - {artist}"
+    if credit:
+        caption += f"\n\n{credit}"
 
     if os.getenv("DRY_RUN") == "1":
         print("DRY_RUN activo: no se publica ni se marca la canción.")
+        log_history(song, artist, [f"DRY_RUN | {credit or 'música local o ninguna'}"])
         return 0
 
     results, failures, attempted = [], 0, 0

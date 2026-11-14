@@ -14,14 +14,20 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")  # tercer nivel,
 PROMPT = """Eres guionista de vídeos cortos (TikTok, Reels, Shorts) sobre música.
 Escribe un guion en español sobre la canción "{song}" de {artist}.
 
+Datos de referencia (extractos de Wikipedia). Basa el guion en ellos, parafraseando con tus
+palabras; no los copies literalmente:
+{contexto}
+
 Reglas:
 - La narración debe durar 20-30 segundos leída en voz alta: entre 55 y 75 palabras.
+- Estilo de narrador de documental: cuenta una historia, con ritmo y frases de 8-15 palabras.
+  Usa comas y puntos para marcar pausas. Nada de listas ni de tono de anuncio.
 - Empieza con un gancho potente en la primera frase (una pregunta o un dato sorprendente).
 - Cuenta algo de la canción (cómo nació, de qué habla, su impacto) y algo del artista.
-- Usa solo datos muy conocidos y contrastados. Si dudas de un dato, no lo incluyas.
+- Usa solo datos de los extractos o datos muy conocidos y contrastados. Si dudas, no lo incluyas.
 - NO cites la letra de la canción, ni siquiera un verso.
 - Termina con una frase corta que invite a comentar o seguir la cuenta.
-- Frases cortas y naturales, pensadas para escucharse, sin emojis en la narración.
+- Sin emojis ni siglas en la narración; escribe los números con palabras.
 
 Además genera 4 descripciones de imágenes EN INGLÉS para ilustrar el vídeo (una por cada parte
 de la narración, en orden). Deben ser ilustraciones artísticas que evoquen la época, el lugar o
@@ -76,8 +82,11 @@ def _groq(model: str, prompt: str) -> str:
     return r.json()["choices"][0]["message"]["content"]
 
 
-def generate_script(song: str, artist: str) -> dict:
-    prompt = PROMPT.format(song=song, artist=artist)
+def generate_script(song: str, artist: str, context: str = "") -> dict:
+    prompt = PROMPT.format(
+        song=song, artist=artist,
+        contexto=context or "(No hay extractos disponibles: usa solo datos muy conocidos.)",
+    )
     chain = [(_gemini, m) for m in GEMINI_MODELS]
     if os.getenv("GROQ_API_KEY"):
         chain.append((_groq, GROQ_MODEL))

@@ -6,7 +6,7 @@ import subprocess
 import edge_tts
 
 VOICE = os.getenv("TTS_VOICE", "es-ES-AlvaroNeural")  # o es-ES-ElviraNeural
-RATE = os.getenv("TTS_RATE", "+8%")
+RATE = os.getenv("TTS_RATE", "-3%")  # un poco más pausada: suena a narración, no a locución
 
 
 async def _synth(text: str, out_mp3: str) -> list:
