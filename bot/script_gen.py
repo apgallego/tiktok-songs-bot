@@ -48,7 +48,7 @@ def generate_script(song: str, artist: str) -> dict:
     last_err = None
     for attempt in range(4):
         try:
-            r = requests.post(url, params={"key": api_key}, json=body, timeout=90)
+            r = requests.post(url, params={"key": api_key}, json=body, timeout=180)
             if r.status_code in (429, 500, 503):
                 raise RuntimeError(f"Gemini {r.status_code}: {r.text[:200]}")
             r.raise_for_status()
