@@ -71,7 +71,7 @@ def _groq(model: str, prompt: str) -> str:
         timeout=180,
     )
     if r.status_code in (400, 401, 403, 404):
-        raise _Skip(f"Groq {model}: HTTP {r.status_code}")
+        raise _Skip(f"Groq {model}: HTTP {r.status_code} {r.text[:300]}")
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
